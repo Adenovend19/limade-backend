@@ -1,0 +1,272 @@
+openapi: 3.0.3
+info:
+  title: Laravel Multi-Merchant & Subscription Platform API
+  description: RESTful API platform for multi-merchant management with role-based access, business types (POS, Billing, Quotation), packages, cart, and automated cumulative subscription extension.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local Development Server
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: "Budi Santoso" }
+                email: { type: string, format: email, example: "budi@example.com" }
+                password: { type: string, minLength: 8, example: "secret1234" }
+      responses:
+        '201':
+          description: User registered successfully
+        '422':
+          description: Validation errors
+
+  /auth/login:
+    post:
+      summary: Login and obtain Sanctum Bearer Token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: "budi@example.com" }
+                password: { type: string, example: "secret1234" }
+      responses:
+        '200':
+          description: Login successful with token
+        '401':
+          description: Invalid email or password
+
+  /auth/me:
+    get:
+      summary: Get authenticated user profile and their merchants
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authenticated user details
+
+  /auth/logout:
+    post:
+      summary: Revoke access token
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /business-types:
+    get:
+      summary: List all active business types (POS, Billing, Quotation)
+      tags: [Catalog]
+      responses:
+        '200':
+          description: List of business types
+
+  /packages:
+    get:
+      summary: List packages with optional filtering by business type
+      tags: [Catalog]
+      parameters:
+        - in: query
+          name: business_type_id
+          schema: { type: integer }
+        - in: query
+          name: business_type_code
+          schema: { type: string, example: "pos" }
+      responses:
+        '200':
+          description: List of subscription packages
+
+  /merchants:
+    get:
+      summary: List merchants owned by or assigned to authenticated user
+      tags: [Merchants]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of merchants
+    post:
+      summary: Create a new merchant (automatically assigned 14-day free trial and owner role)
+      tags: [Merchants]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, business_type_id]
+              properties:
+                name: { type: string, example: "Toko Berkah Retail" }
+                business_type_id: { type: integer, example: 1 }
+      responses:
+        '201':
+          description: Merchant created with 14 days trial
+
+  /merchants/{id}:
+    get:
+      summary: Get details of a merchant
+      tags: [Merchants]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Merchant details
+        '403':
+          description: Unauthorized access to merchant
+
+  /merchants/{id}/members:
+    post:
+      summary: Add staff/cashier member to a merchant (Owner/Admin only)
+      tags: [Merchants]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email, example: "kasir@example.com" }
+                role: { type: string, enum: [owner, admin, staff], example: "staff" }
+      responses:
+        '200':
+          description: Member added successfully
+
+  /cart:
+    get:
+      summary: View authenticated user's cart
+      tags: [Cart]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cart contents and total
+    delete:
+      summary: Clear all items in cart
+      tags: [Cart]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cart cleared
+
+  /cart/items:
+    post:
+      summary: Add a package for a specific merchant to cart
+      tags: [Cart]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [package_id, merchant_id]
+              properties:
+                package_id: { type: integer, example: 1 }
+                merchant_id: { type: integer, example: 1 }
+                quantity: { type: integer, minimum: 1, example: 1 }
+      responses:
+        '200':
+          description: Item added to cart
+        '422':
+          description: Incompatible package and merchant business type
+
+  /checkout:
+    post:
+      summary: Checkout cart items and generate pending order
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Order created with status pending
+        '422':
+          description: Cart is empty
+
+  /orders:
+    get:
+      summary: List user orders
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of user orders
+
+  /orders/{id}/pay:
+    post:
+      summary: Simulate payment and cumulatively extend merchant subscription
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Order paid and merchant subscription extended
+        '422':
+          description: Order already paid
+
+  /merchant/dashboard:
+    get:
+      summary: Access protected operational workspace of merchant
+      tags: [Merchant Operations]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: X-Merchant-Id
+          required: true
+          description: ID of the active merchant
+          schema: { type: integer, example: 1 }
+      responses:
+        '200':
+          description: Operational dashboard data and available features
+        '400':
+          description: Missing X-Merchant-Id header
+        '402':
+          description: Merchant subscription/trial has expired
+        '403':
+          description: User does not belong to merchant
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
